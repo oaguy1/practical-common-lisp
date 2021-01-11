@@ -1,3 +1,5 @@
+;;;; Cd Database from Chapter 3 of PCL
+
 ;; Global Variables for this file
 (defvar *db* nil)
 
@@ -28,7 +30,7 @@
 
 ;; Add to DB until asked to stop
 (defun add-cds ()
-  (loop (add-record (prompt-for-cd))
+  (loop (add-record (prompt-for-cds))
 	(if (not (y-or-n-p "Another? [y/n]: ")) (return))))
 
 ;; Save the DB to a file
@@ -44,3 +46,54 @@
   (with-open-file (in filename)
     (with-standard-io-syntax
       (setf *db* (read in)))))
+
+;; Select from DB by artists (naive)
+(defun select-by-artist (artist)
+  (remove-if-not
+   #'(lambda (cd) (equal (getf cd :artist) artist))
+   *db*))
+
+;; More generalized select function
+(defun select (selector-fn)
+  (remove-if-not selector-fn *db*))
+
+;; Naive selector-fn generator that is *vaguely* SQL like...
+(defun where (&key title artist rating (ripped nil ripped-p))
+  #'(lambda (cd)
+      (and
+       (if title (equal (getf cd :title) title) t)
+       (if artist (equal (getf cd :artist) artist) t)
+       (if rating (equal (getf cd :rating) rating) t)
+       (if ripped-p (equal (getf cd :ripped) ripped) t))))
+
+;; Naive update function
+(defun update (selector-fn &key title artist rating (ripped nil ripped-p))
+  (setf *db*
+	(mapcar
+	 #'(lambda (row)
+	     (when (funcall selector-fn row)
+	       (if title (setf (getf row :title) title))
+	       (if artist (setf (getf row :artist) artist))
+	       (if rating (setf (getf row :rating) rating))
+	       (if ripped-p (setf (getf row :ripped) ripped)))
+	     row) *db* )))
+
+;; Function to delete rows selected by selector-fn
+(defun delete-rows (selector-fn)
+  (setf *db* (remove-if selector-fn *db*)))
+
+;; baby's first macro
+(defmacro backwards (expr) (reverse expr))
+
+;; build comparison for field
+(defun make-comparison-expr (field value)
+  `(equal (getf cd ,field) ,value))
+
+;; build comparison list
+(defun make-comparison-list (fields)
+  (loop while fields
+       collecting (make-comparison-expr (pop fields) (pop fields))))
+
+;; where defined as a macro
+(defmacro where (&rest clauses)
+  `#'(lambda (cd) (and ,@(make-comparison-list clauses))))
